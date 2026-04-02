@@ -31,12 +31,12 @@
               </div>
               <div class="progress-bar">
                 <div class="progress-info">
-                  <span>已报名 {{ group.memberCount }}/{{ group.maxCount }}</span>
-                  <span class="price">￥{{ group.budgetEstimate || 0 }}/人</span>
+                  <span>已报名 {{ group.currentMemberCount || 0 }}/{{ group.maxMemberCount }}</span>
+                  <span class="price">￥{{ group.budgetPerPerson || 0 }}/人</span>
                 </div>
-                <el-progress :percentage="(group.memberCount / group.maxCount) * 100" :show-text="false" />
+                <el-progress :percentage="((group.currentMemberCount || 0) / group.maxMemberCount) * 100" :show-text="false" />
               </div>
-              <el-button type="primary" style="width: 100%" @click="joinGroup(group)">立即报名</el-button>
+              <el-button type="primary" style="width: 100%" @click="joinGroup(group)" :disabled="(group.currentMemberCount || 0) >= group.maxMemberCount">立即报名</el-button>
             </div>
           </el-card>
         </el-col>
@@ -151,11 +151,12 @@ const handleCreate = async () => {
       title: createForm.title,
       tripCategory: createForm.tripCategory,
       destination: createForm.destination,
-      gatheringLocation: createForm.gatheringLocation,
-      description: createForm.description,
-      memberCount: 1,
-      maxCount: createForm.maxCount,
-      budgetEstimate: createForm.budgetEstimate,
+      gatherLocation: createForm.gatheringLocation,
+      highlightsRichtext: createForm.description,
+      currentMemberCount: 1,
+      minMemberCount: 2,
+      maxMemberCount: createForm.maxCount,
+      budgetPerPerson: createForm.budgetEstimate,
       startTime: dayjs(createForm.startTime).format('YYYY-MM-DD HH:mm:ss'),
       signupDeadline: dayjs(createForm.signupDeadline).format('YYYY-MM-DD HH:mm:ss')
     })
@@ -168,9 +169,15 @@ const handleCreate = async () => {
 }
 
 const joinGroup = (group) => {
-  ElMessageBox.confirm(`确认报名参加 ${group.title} 吗？需预支付 ￥${group.budgetEstimate}`, '报名确认')
-    .then(() => {
-      ElMessage.success('报名成功')
+  ElMessageBox.confirm(`确认报名参加 ${group.title} 吗？需预支付 ￥${group.budgetPerPerson || group.budgetEstimate}`, '报名确认')
+    .then(async () => {
+      try {
+        await axios.post('/api/trips/group/join', null, { params: { tripId: group.id, count: 1 } })
+        ElMessage.success('报名成功')
+        fetchGroups() // Refresh to update numbers
+      } catch (err) {
+        ElMessage.error(err.response?.data || '报名失败')
+      }
     })
     .catch(() => {})
 }

@@ -128,8 +128,14 @@ const handlePublish = async () => {
 
 const joinTrip = (trip) => {
   ElMessageBox.confirm(`确认预约从 ${trip.startLocation} 到 ${trip.endLocation} 的拼车吗？费用约为 ￥${trip.pricePerPerson}`, '预约确认')
-    .then(() => {
-      ElMessage.success('预约申请已发送给车主')
+    .then(async () => {
+      try {
+        await axios.post('/api/trips/carpool/join', null, { params: { tripId: trip.id, count: 1 } })
+        ElMessage.success('预约申请已成功发送')
+        fetchTrips() // Refresh the trip list
+      } catch (err) {
+        ElMessage.error(err.response?.data || '预约失败')
+      }
     })
     .catch(() => {})
 }

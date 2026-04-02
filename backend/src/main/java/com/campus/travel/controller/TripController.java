@@ -33,6 +33,16 @@ public class TripController {
         return ResponseEntity.ok(res > 0);
     }
 
+    @PostMapping("/carpool/join")
+    public ResponseEntity<?> joinCarpool(@RequestParam Long tripId, @RequestParam(defaultValue = "1") Integer count) {
+        int res = carpoolMapper.bookSeats(tripId, count);
+        if (res > 0) {
+            return ResponseEntity.ok("success");
+        } else {
+            return ResponseEntity.status(400).body("余座不足或行程已满");
+        }
+    }
+
     @GetMapping("/group/list")
     public List<GroupTrip> getGroupList() {
         return groupMapper.findAllRecruitingTrips();
@@ -44,5 +54,15 @@ public class TripController {
         if (trip.getCreatorUserId() == null) trip.setCreatorUserId(1L);
         int res = 0; try { res = groupMapper.insert(trip); } catch (Exception e) { e.printStackTrace(); return ResponseEntity.status(500).body(e.getMessage()); }
         return ResponseEntity.ok(res > 0);
+    }
+
+    @PostMapping("/group/join")
+    public ResponseEntity<?> joinGroup(@RequestParam Long tripId, @RequestParam(defaultValue = "1") Integer count) {
+        int res = groupMapper.incrementMemberCount(tripId, count);
+        if (res > 0) {
+            return ResponseEntity.ok("success");
+        } else {
+            return ResponseEntity.status(400).body("人数已满或拼团异常");
+        }
     }
 }
