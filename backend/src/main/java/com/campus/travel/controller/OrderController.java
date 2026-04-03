@@ -2,6 +2,11 @@ package com.campus.travel.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.campus.travel.mapper.OrderMapper;
+import com.campus.travel.mapper.UserAccountMapper;
+import com.campus.travel.entity.UserAccount;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -13,42 +18,106 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 public class OrderController {
+
+    @Autowired
+    private OrderMapper orderMapper;
+
+    @Autowired
+    private UserAccountMapper userAccountMapper;
+
+    private Long getUserIdFromRequest(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer simulated_jwt_token_for_")) {
+            String username = authHeader.substring("Bearer simulated_jwt_token_for_".length());
+            UserAccount user = userAccountMapper.findByUsername(username);
+            return user != null ? user.getId() : null;
+        }
+        return null;
+    }
+
     @GetMapping("/orders/list")
-    public ResponseEntity<List<Map<String, Object>>> getOrders(@RequestParam(required = false, defaultValue = "carpool") String type) {
-        List<Map<String, Object>> orders = new ArrayList<>();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    public ResponseEntity<List<Map<String, Object>>> getOrders(
+            @RequestParam(required = false, defaultValue = "carpool") String type,
+            HttpServletRequest request) {
+        
+        Long userId = getUserIdFromRequest(request);
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
 
+        List<Map<String, Object>> orders;
         if ("carpool".equals(type)) {
-            Map<String, Object> order1 = new HashMap<>();
-            order1.put("id", 1);
-            order1.put("orderNo", "CP-20240401-001");
-            order1.put("title", "拼车：东校区侧门 -> 高铁南站");
-            order1.put("amount", "15.00");
-            order1.put("status", "CONFIRMED");
-            order1.put("createTime", LocalDateTime.now().minusDays(1).format(formatter));
-
-            Map<String, Object> order2 = new HashMap<>();
-            order2.put("id", 2);
-            order2.put("orderNo", "CP-20240328-042");
-            order2.put("title", "拼车：西区宿舍楼 -> 万达广场");
-            order2.put("amount", "10.00");
-            order2.put("status", "COMPLETED");
-            order2.put("createTime", LocalDateTime.now().minusDays(4).format(formatter));
-            
-            orders.add(order1);
-            orders.add(order2);
+            orders = orderMapper.findCarpoolOrdersByUserId(userId);
         } else {
-            Map<String, Object> order3 = new HashMap<>();
-            order3.put("id", 3);
-            order3.put("orderNo", "GT-20240405-088");
-            order3.put("title", "约团：周末清远漂流主题团");
-            order3.put("amount", "120.00");
-            order3.put("status", "PENDING");
-            order3.put("createTime", LocalDateTime.now().minusHours(2).format(formatter));
-            
-            orders.add(order3);
+            orders = orderMapper.findGroupOrdersByUserId(userId);
+        }
+
+        // Format date and format status for frontend consistency
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        for (Map<String, Object> order : orders) {
+            if (order.get("createTime") instanceof LocalDateTime) {
+                order.put("createTime", ((LocalDateTime) order.get("createTime")).format(formatter));
+            }
+            if ("PENDING_CONFIRM".equals(order.get("status")) || "PENDING_PAY".equals(order.get("status"))) {
+                order.put("status", "PENDING");
+            }
         }
 
         return ResponseEntity.ok(orders);
+    }
+
+    @PostMapping("/orders/{id}/cancel")
+    public ResponseEntity<Map<String, String>> cancelOrder(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "carpool") String type,
+            HttpServletRequest request) {
+        
+        Long userId = getUserIdFromRequest(request);
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        int updated;
+        if ("carpool".equals(type)) {
+            updated = orderMapper.cancelCarpoolOrder(id, userId);
+        } else {
+            updated = orderMapper.cancelGroupOrder(id, userId);
+        }
+
+        if (updated == 0) {
+            return ResponseEntity.badRequest().body(Map.of("message", "取消失败，订单不存在或不属于您"));
+        }
+
+        return ResponseEntity.ok(Map.of("message", "success"));
+    }
+
+    @GetMapping("/orders/{id}/details")
+    public ResponseEntity<Map<String, Object>> getOrderDetails(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "carpool") String type,
+            HttpServletRequest request) {
+        
+        Long userId = getUserIdFromRequest(request);
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        Map<String, Object> details;
+        if ("carpool".equals(type)) {
+            details = orderMapper.getCarpoolOrderDetails(id, userId);
+        } else {
+            details = orderMapper.getGroupOrderDetails(id, userId);
+        }
+
+        if (details == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        if (details.get("createTime") instanceof LocalDateTime) {
+            details.put("createTime", ((LocalDateTime) details.get("createTime")).format(formatter));
+        }
+
+        return ResponseEntity.ok(details);
     }
 }
